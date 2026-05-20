@@ -57,13 +57,14 @@ Any Dutch license plate → full vehicle intelligence in seconds, presented so c
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Azure Static Web Apps + Functions | Free tier covers expected traffic; serverless = no idle cost | — Pending |
-| Azure Tables for caching/state | Extremely cheap per operation, perfect for plate lookup caching | — Pending |
-| No user accounts in v1 | Reduces scope significantly; anonymous lookup covers the main use case | — Pending |
-| Plugin-style data source architecture | New data sources (recall DB, fuel efficiency, etc.) added as independent modules | — Pending |
-| Progressive data loading | Core RDW data loads first (<1s), secondary sources load in parallel async | — Pending |
-| Low-cost LLM enrichment | Summaries and insights add UX value without expensive model cost | — Pending |
-| Free data sources only | Keeps operating cost at zero/near-zero | — Pending |
+| Azure Static Web Apps + Functions | Free tier covers expected traffic; serverless = no idle cost | Accepted for v1 |
+| Azure Tables for caching/state | Extremely cheap per operation, perfect for plate lookup caching | Accepted for v1; use 2-character plate prefix partitioning |
+| No user accounts in v1 | Reduces scope significantly; anonymous lookup covers the main use case | Accepted for v1 |
+| Module-style data source architecture | New data sources are independent modules with one registry import | Accepted for v1 |
+| Single aggregator Function | One backend endpoint fans out to source modules and returns partial results | Accepted for v1 |
+| Progressive data loading | Core RDW data loads first; enrichment and deep cards can resolve later | Accepted for v1 |
+| Low-cost LLM enrichment | Summaries and insights add UX value without expensive model cost | Accepted for v1, async and cached only |
+| Free data sources only | Keeps operating cost at zero/near-zero | Accepted for v1 |
 
 ## Evolution
 

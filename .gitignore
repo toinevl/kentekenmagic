@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+dist/
+coverage/
+.env
+.env.*
+!.env.example
+local.settings.json
+*.log
+*.tsbuildinfo
+.DS_Store
+azurite-data/

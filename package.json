@@ -1,0 +1,20 @@
+{
+  "name": "kentekenmagic",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "frontend",
+    "api"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace frontend && npm run build --workspace api",
+    "typecheck": "npm run typecheck --workspace frontend && npm run typecheck --workspace api",
+    "lint": "npm run lint --workspace frontend",
+    "test": "npm run test --workspaces --if-present",
+    "start:api": "npm run build --workspace api && npm run start --workspace api",
+    "dev:frontend": "npm run dev --workspace frontend"
+  },
+  "engines": {
+    "node": ">=20.11.0"
+  }
+}

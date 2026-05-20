@@ -1,0 +1,46 @@
+@import "@fontsource-variable/inter";
+@import "tailwindcss";
+
+:root {
+  --background: #f7f4ee;
+  --foreground: #171717;
+  --surface: #ffffff;
+  --muted: #6b6258;
+  --line: #ded8cf;
+  --plate: #f5c400;
+  --plate-edge: #101010;
+  --accent: #0d9488;
+  --danger: #b42318;
+  --warning: #b7791f;
+}
+
+@theme {
+  --font-sans: "Inter Variable", "Inter", ui-sans-serif, system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+body {
+  min-height: 100%;
+  margin: 0;
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+::selection {
+  background: #f5c400;
+  color: #101010;
+}
