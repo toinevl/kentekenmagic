@@ -8,15 +8,15 @@
 
 ## Current Position
 
-- **Phase:** 1 of 4 — Core Lookup MVP (in progress)
-- **Status:** Phase 0 complete; Phase 1 core lookup implementation underway
+- **Phase:** 3 of 4 — Data Depth (not yet started)
+- **Status:** Phases 0–2 complete and committed (61b5108); Phase 3 next
 
 ## Progress
 
 ```
 Phase 0 ████████████████████ 100% ✓
-Phase 1 ██████░░░░░░░░░░░░░░  ~30%
-Phase 2 ░░░░░░░░░░░░░░░░░░░░   0%
+Phase 1 ████████████████████ 100% ✓
+Phase 2 ████████████████████ 100% ✓
 Phase 3 ░░░░░░░░░░░░░░░░░░░░   0%
 Phase 4 ░░░░░░░░░░░░░░░░░░░░   0%
 ```
@@ -43,8 +43,10 @@ Phase 4 ░░░░░░░░░░░░░░░░░░░░   0%
 ## Recent Decisions
 
 - Next.js (not SvelteKit) — final stack decision made during Phase 0
-- Phase 0 scaffolding completed and verified (typecheck, test, lint, build all pass)
-- Phase 1 started: backend RDW sources exist, frontend needs real card mapping
+- Phase 1: RDW vehicle+fuel lookup with 5 typed result cards, Azure Table cache
+- Phase 2: Async Claude AI enrichment (separate enrich endpoint, 7-day LLM cache, structured tool output with prompt caching)
+- Monorepo with root-level func binary; dev proxy via next.config.ts
+- Plate validator rejects all-letter or all-digit strings
 
 ## Pending Todos
 
@@ -57,5 +59,5 @@ Phase 4 ░░░░░░░░░░░░░░░░░░░░   0%
 ## Session Continuity
 
 Last session: 2026-05-20
-Stopped at: Phase 0 scaffold complete; Phase 1 not yet started
+Stopped at: Phases 0–2 committed (61b5108); Phase 3 not yet started
 Resume file: none
