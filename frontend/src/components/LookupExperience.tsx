@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-quer
 import { motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, Calendar, CarFront, Droplet, Info, Loader2, Search, ShieldCheck, Sparkles, Weight } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { lookupVehicle, enrichVehicle, VehicleLookupResponse, EnrichmentResponse, EnrichmentInsight, RdwVehicle, RdwFuel } from "@/lib/api";
+import { lookupVehicle, enrichVehicle, VehicleLookupResponse, EnrichmentResponse, EnrichmentInsight, RdwVehicle, RdwFuel, ApkHistory } from "@/lib/api";
 import { formatPlate, normalizePlate, validatePlate } from "@/lib/plate";
 
 const queryClient = new QueryClient();
@@ -187,6 +187,7 @@ function ResultPreview({ data }: { data: VehicleLookupResponse }) {
   const plate = data.displayPlate ?? formatPlate(data.plate);
   const vehicle = data.cards.rdw_vehicle as RdwVehicle | undefined;
   const fuels = (data.cards.rdw_fuel ?? []) as RdwFuel[];
+  const apkHistory = data.cards.rdw_apk_history as ApkHistory | undefined;
 
   const enrichQuery = useQuery({
     queryKey: ["enrich", data.plate],
@@ -198,7 +199,7 @@ function ResultPreview({ data }: { data: VehicleLookupResponse }) {
   return (
     <>
       <IdentityCard plate={plate} fromCache={data.fromCache} vehicle={vehicle} />
-      <ApkCard vehicle={vehicle} />
+      <ApkTimelineCard apkHistory={apkHistory} />
       <TechCard vehicle={vehicle} />
       <FuelCard vehicle={vehicle} fuels={fuels} />
       <RegistrationCard vehicle={vehicle} />
@@ -261,70 +262,102 @@ function IdentityCard({
   );
 }
 
-// ── Card 2: APK status ────────────────────────────────────────────────────────
+// ── Card 2: APK timeline ──────────────────────────────────────────────────────
 
-function ApkCard({ vehicle }: { vehicle: RdwVehicle | undefined }) {
-  const expiry = vehicle?.dates?.apkExpiry ?? null;
-  const status = apkStatus(expiry);
-  const hasRecall = vehicle?.openstaande_terugroepactie_indicator === "Ja";
+const APK_STATUS_STYLES = {
+  valid: {
+    border: "border-green-200",
+    bg: "bg-green-50",
+    icon: "text-green-600",
+    label: "text-green-800",
+    badge: "bg-green-100 text-green-800",
+    text: "Geldig",
+  },
+  soon: {
+    border: "border-amber-200",
+    bg: "bg-amber-50",
+    icon: "text-amber-600",
+    label: "text-amber-800",
+    badge: "bg-amber-100 text-amber-800",
+    text: "Verloopt binnenkort",
+  },
+  expired: {
+    border: "border-red-200",
+    bg: "bg-red-50",
+    icon: "text-red-600",
+    label: "text-red-800",
+    badge: "bg-red-100 text-red-800",
+    text: "Verlopen",
+  },
+  unknown: {
+    border: "border-[var(--line)]",
+    bg: "bg-white",
+    icon: "text-[var(--muted)]",
+    label: "text-[var(--foreground)]",
+    badge: "bg-stone-100 text-stone-600",
+    text: "Onbekend",
+  },
+} as const;
 
-  const statusStyles = {
-    valid: {
-      border: "border-green-200",
-      bg: "bg-green-50",
-      icon: "text-green-600",
-      label: "text-green-800",
-      badge: "bg-green-100 text-green-800",
-      text: "Geldig",
-    },
-    soon: {
-      border: "border-amber-200",
-      bg: "bg-amber-50",
-      icon: "text-amber-600",
-      label: "text-amber-800",
-      badge: "bg-amber-100 text-amber-800",
-      text: "Verloopt binnenkort",
-    },
-    expired: {
-      border: "border-red-200",
-      bg: "bg-red-50",
-      icon: "text-red-600",
-      label: "text-red-800",
-      badge: "bg-red-100 text-red-800",
-      text: "Verlopen",
-    },
-    unknown: {
-      border: "border-[var(--line)]",
-      bg: "bg-white",
-      icon: "text-[var(--muted)]",
-      label: "text-[var(--foreground)]",
-      badge: "bg-stone-100 text-stone-600",
-      text: "Onbekend",
-    },
-  }[status];
+export function ApkTimelineCard({ apkHistory }: { apkHistory: ApkHistory | undefined }) {
+  const [showAll, setShowAll] = useState(false);
+
+  if (!apkHistory) return null;
+
+  const status = apkStatus(apkHistory.currentExpiry);
+  const styles = APK_STATUS_STYLES[status];
+  const displayedInspections = showAll ? apkHistory.inspections : apkHistory.inspections.slice(0, 5);
 
   return (
-    <article className={`rounded-lg border ${statusStyles.border} ${statusStyles.bg} p-5 shadow-sm`}>
+    <article className={`rounded-lg border ${styles.border} ${styles.bg} p-5 shadow-sm`}>
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <div className={`inline-grid size-8 place-items-center rounded-md bg-white/70 ${statusStyles.icon}`}>
+          <div className={`inline-grid size-8 place-items-center rounded-md bg-white/70 ${styles.icon}`}>
             <ShieldCheck size={18} />
           </div>
-          <p className={`text-sm font-semibold ${statusStyles.label}`}>APK</p>
+          <p className={`text-sm font-semibold ${styles.label}`}>APK</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${statusStyles.badge}`}>
-            {statusStyles.text}
-          </span>
-          {hasRecall ? (
-            <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
-              Terugroepactie
-            </span>
-          ) : null}
-        </div>
+        <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${styles.badge}`}>
+          {styles.text}
+        </span>
       </div>
-      <p className={`mt-3 text-2xl font-bold ${statusStyles.label}`}>{formatDutchDate(expiry)}</p>
-      <p className={`mt-0.5 text-xs ${statusStyles.label} opacity-70`}>Vervaldatum APK</p>
+      <p className={`mt-3 text-2xl font-bold ${styles.label}`}>{formatDutchDate(apkHistory.currentExpiry)}</p>
+      <p className={`mt-0.5 text-xs ${styles.label} opacity-70`}>Vervaldatum APK</p>
+
+      {displayedInspections.length > 0 ? (
+        <div className="mt-4 space-y-2">
+          {displayedInspections.map((inspection, i) => (
+            <div key={i} className="rounded-md bg-white/60 px-3 py-2 text-sm">
+              <div className="flex items-baseline justify-between gap-3">
+                <span className="font-medium">{formatDutchDate(inspection.date)}</span>
+                <span className="text-xs text-[var(--muted)]">{inspection.facility}</span>
+              </div>
+              <p className="text-xs text-[var(--muted)]">{inspection.type}</p>
+              {inspection.defectCount > 0 ? (
+                <div className="mt-1">
+                  <p className="text-xs font-medium text-red-700">{inspection.defectCount} {inspection.defectCount === 1 ? "gebrek" : "gebreken"}</p>
+                  <ul className="mt-0.5 space-y-0.5">
+                    {inspection.defects.map((defect, j) => (
+                      <li key={j} className="text-xs text-[var(--foreground)]">
+                        {defect.description}{defect.count > 1 ? ` (${defect.count}×)` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {apkHistory.totalCount > 5 ? (
+        <button
+          onClick={() => setShowAll(!showAll)}
+          className={`mt-3 text-xs font-medium ${styles.label} underline underline-offset-2 hover:no-underline`}
+        >
+          {showAll ? "Minder tonen" : `Meer tonen (+${apkHistory.totalCount - 5})`}
+        </button>
+      ) : null}
     </article>
   );
 }
