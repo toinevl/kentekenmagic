@@ -38,6 +38,55 @@ export interface RdwFuel {
   uitlaatemissieniveau?: string;
 }
 
+export interface ApkInspection {
+  date: string;
+  expiryDate: string;
+  type: string;
+  facility: string;
+  defectCount: number;
+  defects: Array<{ id: string; description: string; count: number }>;
+}
+
+export interface ApkHistory {
+  plate: string;
+  currentExpiry: string | null;
+  currentStatus: "valid" | "soon" | "expired" | "unknown";
+  inspections: ApkInspection[];
+  totalCount: number;
+}
+
+export interface RecallDetail {
+  referenceCode: string;
+  defectDescription: string;
+  riskLevel: string;
+  publicationDate: string | null;
+  repairDescription: string;
+  moreInfoUrl?: string;
+  moreInfoPhone?: string;
+}
+
+export interface RecallStatus {
+  plate: string;
+  hasOpenRecall: boolean;
+  statusDescription: string;
+  recalls: RecallDetail[];
+}
+
+export interface Modification {
+  description: string;
+  installDate: string | null;
+  removalDate: string | null;
+  isActive: boolean;
+  manufacturer?: string;
+  tankCapacity?: string;
+}
+
+export interface Modifications {
+  plate: string;
+  modifications: Modification[];
+  activeCount: number;
+}
+
 export interface VehicleLookupResponse {
   plate: string;
   displayPlate?: string;
@@ -47,6 +96,9 @@ export interface VehicleLookupResponse {
   cards: {
     rdw_vehicle?: RdwVehicle;
     rdw_fuel?: RdwFuel[];
+    rdw_apk_history?: ApkHistory;
+    rdw_recall_status?: RecallStatus;
+    rdw_modifications?: Modifications;
     [key: string]: unknown;
   };
   errors?: Record<string, string>;
