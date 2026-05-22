@@ -85,6 +85,15 @@
 - APK timeline shows inspections in correct chronological order with defect summaries when available.
 - Recall detail clearly distinguishes open, repaired, and unknown statuses.
 
+**Plans:** 5 plans across 2 waves
+
+Plans:
+- [ ] 03-01-PLAN.md — Test infrastructure + all 6 Wave 0 test stubs (RED state)
+- [ ] 03-02-PLAN.md — rdwApkHistory DataSource (3-dataset join: sgfe-77wx + a34c-vvps + hx2c-gt7k)
+- [ ] 03-03-PLAN.md — rdwRecallStatus + rdwModifications sources + registry registration
+- [ ] 03-04-PLAN.md — Frontend TypeScript interfaces + ApkTimelineCard (replaces ApkCard)
+- [ ] 03-05-PLAN.md — RecallCard + ModificationsCard + ResultPreview wiring + human verify
+
 ## Phase 4: Azure Release
 
 **Goal:** Deploy a low-cost, observable v1 on Azure.
@@ -113,4 +122,3 @@
 - Fleet/bulk lookup.
 - CO2 g/km and deep TGK joins until after the MVP.
 - EU Safety Gate integration unless a stable machine-readable API appears.
-
