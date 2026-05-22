@@ -4,7 +4,7 @@ import { QueryClient, QueryClientProvider, useQuery } from "@tanstack/react-quer
 import { motion, useReducedMotion } from "motion/react";
 import { AlertTriangle, Calendar, CarFront, Droplet, Info, Loader2, Search, ShieldCheck, Sparkles, Weight } from "lucide-react";
 import { FormEvent, useMemo, useState } from "react";
-import { lookupVehicle, enrichVehicle, VehicleLookupResponse, EnrichmentResponse, EnrichmentInsight, RdwVehicle, RdwFuel, ApkHistory } from "@/lib/api";
+import { lookupVehicle, enrichVehicle, VehicleLookupResponse, EnrichmentResponse, EnrichmentInsight, RdwVehicle, RdwFuel, ApkHistory, RecallStatus, Modifications } from "@/lib/api";
 import { formatPlate, normalizePlate, validatePlate } from "@/lib/plate";
 
 const queryClient = new QueryClient();
@@ -188,6 +188,8 @@ function ResultPreview({ data }: { data: VehicleLookupResponse }) {
   const vehicle = data.cards.rdw_vehicle as RdwVehicle | undefined;
   const fuels = (data.cards.rdw_fuel ?? []) as RdwFuel[];
   const apkHistory = data.cards.rdw_apk_history as ApkHistory | undefined;
+  const recallStatus = data.cards.rdw_recall_status as RecallStatus | undefined;
+  const modifications = data.cards.rdw_modifications as Modifications | undefined;
 
   const enrichQuery = useQuery({
     queryKey: ["enrich", data.plate],
@@ -200,8 +202,10 @@ function ResultPreview({ data }: { data: VehicleLookupResponse }) {
     <>
       <IdentityCard plate={plate} fromCache={data.fromCache} vehicle={vehicle} />
       <ApkTimelineCard apkHistory={apkHistory} />
+      <RecallCard recallStatus={recallStatus} />
       <TechCard vehicle={vehicle} />
       <FuelCard vehicle={vehicle} fuels={fuels} />
+      <ModificationsCard modifications={modifications} />
       <RegistrationCard vehicle={vehicle} />
       <EnrichmentCard query={enrichQuery} />
     </>
@@ -362,7 +366,81 @@ export function ApkTimelineCard({ apkHistory }: { apkHistory: ApkHistory | undef
   );
 }
 
-// ── Card 3: Technical specs ───────────────────────────────────────────────────
+// ── Card 3: Recall status ─────────────────────────────────────────────────────
+
+export function RecallCard({ recallStatus }: { recallStatus: RecallStatus | undefined }) {
+  if (!recallStatus) return null;
+
+  const hasOpen = recallStatus.hasOpenRecall;
+
+  return (
+    <article className={`rounded-lg border p-5 shadow-sm ${hasOpen ? "border-red-200 bg-red-50" : "border-[var(--line)] bg-white"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <div className={`inline-grid size-8 place-items-center rounded-md ${hasOpen ? "bg-red-100 text-red-700" : "bg-stone-100 text-[var(--foreground)]"}`}>
+            <AlertTriangle size={18} />
+          </div>
+          <p className={`text-sm font-semibold ${hasOpen ? "text-red-900" : ""}`}>Terugroepacties</p>
+        </div>
+        {hasOpen ? (
+          <span className="rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-800">
+            Let op
+          </span>
+        ) : null}
+      </div>
+      <p className={`mt-3 text-sm font-medium ${hasOpen ? "text-red-800" : "text-[var(--muted)]"}`}>
+        {recallStatus.statusDescription}
+      </p>
+      {recallStatus.recalls.length > 0 ? (
+        <ul className="mt-3 space-y-2">
+          {recallStatus.recalls.map((recall, i) => (
+            <li key={i} className="rounded-md bg-white/70 px-3 py-2 text-xs text-[var(--foreground)]">
+              {recall.defectDescription}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </article>
+  );
+}
+
+// ── Card 4 (new): Modifications ───────────────────────────────────────────────
+
+export function ModificationsCard({ modifications }: { modifications: Modifications | undefined }) {
+  if (!modifications) return null;
+
+  return (
+    <article className="rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
+      <div className="mb-3 flex items-center gap-2">
+        <div className="inline-grid size-8 place-items-center rounded-md bg-stone-100 text-[var(--foreground)]">
+          <Info size={18} />
+        </div>
+        <p className="text-sm font-semibold">Ombouw & wijzigingen</p>
+        {modifications.activeCount > 0 ? (
+          <span className="ml-auto rounded-full bg-stone-100 px-2.5 py-0.5 text-xs font-medium text-stone-700">
+            {modifications.activeCount} actief
+          </span>
+        ) : null}
+      </div>
+      {modifications.modifications.length === 0 ? (
+        <p className="text-sm text-[var(--muted)]">Geen ombouwregistraties</p>
+      ) : (
+        <ul className="space-y-2">
+          {modifications.modifications.map((mod, i) => (
+            <li key={i} className="rounded-md bg-stone-50 px-3 py-2 text-sm">
+              <span className="font-medium">{mod.description}</span>
+              {mod.installDate ? (
+                <span className="ml-2 text-xs text-[var(--muted)]">{formatDutchDate(mod.installDate)}</span>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      )}
+    </article>
+  );
+}
+
+// ── Card 5: Technical specs ───────────────────────────────────────────────────
 
 function TechCard({ vehicle }: { vehicle: RdwVehicle | undefined }) {
   const rows: { label: string; value: string }[] = [
