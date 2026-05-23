@@ -114,6 +114,13 @@ Plans:
 - Cold start and warm lookup timings are documented.
 - Production has no checked-in secrets and no paid data dependencies.
 
+**Plans:** 3 plans across 2 waves
+
+Plans:
+- [ ] 04-01-PLAN.md — Config fixes: move staticwebapp.config.json to frontend/public/, add platform.apiRuntime, scrub local.settings.json
+- [ ] 04-02-PLAN.md — GitHub Actions workflows: validate.yml (PR checks) + deploy.yml (SWA deploy on push to main)
+- [ ] 04-03-PLAN.md — DEPLOY.md provisioning runbook + production smoke test checkpoint
+
 ## Explicit Deferrals
 
 - Market value and pricing.
