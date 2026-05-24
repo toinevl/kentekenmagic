@@ -1,16 +1,38 @@
 # KentekenMagic — Azure Provisioning Runbook
 
 This runbook takes the project from zero Azure resources to a live production deployment.
-Complete Steps 1–7 in order. All commands require Azure CLI installed and authenticated.
+Complete Steps 0–7 in order. All commands require Azure CLI and GitHub CLI installed and authenticated.
 
 ---
 
 ## Prerequisites
 
 - **Azure CLI** installed and authenticated: run `az login`
-- **GitHub repo access** with Settings > Secrets and variables > Actions write permission
+- **GitHub CLI** installed and authenticated: run `gh auth login`
 - **Socrata RDW app token** — register at [data.overheid.nl](https://data.overheid.nl) (free)
 - **Anthropic API key** — from [console.anthropic.com](https://console.anthropic.com)
+
+---
+
+## Step 0: Create GitHub Repository and Push Code
+
+```bash
+# Create the repository on GitHub (public or private)
+gh repo create kentekenmagic --public --source=. --remote=origin --push
+```
+
+This creates the repo, adds it as `origin`, and pushes the current branch.
+
+> If you prefer private: replace `--public` with `--private`.
+
+**Verify:**
+
+```bash
+gh repo view kentekenmagic --web
+# Opens the repo in your browser; confirm code is present
+```
+
+After this step the GitHub Actions tab will exist and the `deploy.yml` workflow will be visible (but will not run until you add the secret in Step 3 and trigger it in Step 7).
 
 ---
 
