@@ -29,6 +29,12 @@ jobs:
       - name: Build API
         run: npm run build --workspace api
 
+      - name: Build frontend
+        run: npm run build --workspace frontend
+        env:
+          NEXT_BUILD_EXPORT: "1"
+          NEXT_TELEMETRY_DISABLED: "1"
+
       - name: Build And Deploy
         uses: Azure/static-web-apps-deploy@v1
         with:
@@ -38,6 +44,4 @@ jobs:
           app_location: "frontend"
           api_location: "api"
           output_location: "out"
-        env:
-          NEXT_BUILD_EXPORT: "1"
-          NEXT_TELEMETRY_DISABLED: "1"
+          skip_app_build: true
