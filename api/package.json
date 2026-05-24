@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:unit": "vitest run --reporter=verbose src/__tests__/sources/",
-    "start": "../node_modules/.bin/func start"
+    "start": "func start"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.97.1",
