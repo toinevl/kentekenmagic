@@ -4,7 +4,7 @@ milestone: v1.0
 milestone_name: milestone
 status: executing
 stopped_at: "Completed 04-02-PLAN.md: GitHub Actions workflows created"
-last_updated: "2026-05-23T15:16:44Z"
+last_updated: "2026-05-27"
 progress:
   total_phases: 2
   completed_phases: 1
@@ -81,6 +81,7 @@ Phase 4 ░░░░░░░░░░░░░░░░░░░░   0%
 
 ## Session Continuity
 
-Last session: 2026-05-23T15:16:44Z
-Stopped at: Completed 04-02-PLAN.md: GitHub Actions workflows created
+Last session: 2026-05-27
+Stopped at: Phase 04 deployment debugging in progress — azure-functions-core-tools removed, skip_app_build flow established; smoke test pending
+Learnings extracted: 04-LEARNINGS.md (9 decisions, 7 lessons, 5 patterns, 5 surprises)
 Resume file: None
