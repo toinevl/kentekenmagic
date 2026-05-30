@@ -29,6 +29,16 @@ jobs:
       - name: Build API
         run: npm run build --workspace api
 
+      # skip_api_build bypasses Oryx, so Azure does NOT run npm install on the
+      # API. In an npm-workspaces monorepo, api/node_modules is empty (deps are
+      # hoisted to the repo-root node_modules), so the deployed function app
+      # would ship without @azure/functions etc. and fail to start. Install the
+      # API's production deps directly into api/node_modules as a self-contained
+      # package. --no-workspaces makes npm treat api/ as a standalone project.
+      - name: Install API production dependencies
+        working-directory: api
+        run: npm install --omit=dev --no-workspaces --no-package-lock
+
       - name: Build frontend
         run: npm run build --workspace frontend
         env:
