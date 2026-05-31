@@ -54,4 +54,8 @@ jobs:
           app_location: "frontend/out"
           api_location: "api"
           skip_app_build: true
-          skip_api_build: true
+          # NOTE: do NOT set skip_api_build — Oryx's API build is what supplies
+          # the function "language info" to SWA. Skipping it causes
+          # "Function language info isn't provided" on deploy. With node:24
+          # (node:20 is EOL) and extensionBundle/core-tools removed, the Oryx
+          # API build succeeds.
