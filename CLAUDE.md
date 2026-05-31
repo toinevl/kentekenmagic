@@ -40,6 +40,6 @@ Full provisioning runbook (resource group, storage tables, app settings): `DEPLO
 
 ## Tech Notes
 
-- API uses Azure Functions v4 programming model, Node 20 runtime (`staticwebapp.config.json` → `apiRuntime: node:20`), compiled to CommonJS.
+- API uses Azure Functions v4 programming model, Node 22 runtime (`staticwebapp.config.json` → `apiRuntime: node:22`; node:22 is the newest version SWA managed functions support — node:24 is NOT supported), compiled to CommonJS.
 - Vehicle data is aggregated from multiple RDW sources (`api/src/sources/`) with table-storage caching; enrichment calls the Claude API with prompt caching.
 - Frontend build uses `NEXT_BUILD_EXPORT=1` for static export.
