@@ -1,3 +1,9 @@
+// API base URL. Empty for local dev (same-origin `/api` via the SWA CLI proxy);
+// set at build time in production to the standalone Azure Functions app URL via
+// NEXT_PUBLIC_API_BASE_URL. SWA managed functions are not used — the API runs as
+// a separate Flex Consumption Function App called directly (CORS-allowed).
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+
 export interface RdwVehicle {
   kenteken: string;
   voertuigsoort?: string;
@@ -117,7 +123,7 @@ export interface EnrichmentResponse {
 }
 
 export async function enrichVehicle(plate: string): Promise<EnrichmentResponse> {
-  const response = await fetch(`/api/enrich/${encodeURIComponent(plate)}`, {
+  const response = await fetch(`${API_BASE}/api/enrich/${encodeURIComponent(plate)}`, {
     method: "POST",
     headers: { accept: "application/json" }
   });
@@ -135,7 +141,7 @@ export async function enrichVehicle(plate: string): Promise<EnrichmentResponse> 
 }
 
 export async function lookupVehicle(plate: string): Promise<VehicleLookupResponse> {
-  const response = await fetch(`/api/vehicle/${encodeURIComponent(plate)}`, {
+  const response = await fetch(`${API_BASE}/api/vehicle/${encodeURIComponent(plate)}`, {
     headers: {
       accept: "application/json"
     }

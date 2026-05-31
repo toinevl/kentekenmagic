@@ -26,24 +26,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Build API
-        run: npm run build --workspace api
-
-      # skip_api_build bypasses Oryx, so Azure does NOT run npm install on the
-      # API. In an npm-workspaces monorepo, api/node_modules is empty (deps are
-      # hoisted to the repo-root node_modules), so the deployed function app
-      # would ship without @azure/functions etc. and fail to start. Install the
-      # API's production deps directly into api/node_modules as a self-contained
-      # package. --no-workspaces makes npm treat api/ as a standalone project.
-      - name: Install API production dependencies
-        working-directory: api
-        run: npm install --omit=dev --no-workspaces --no-package-lock
-
       - name: Build frontend
         run: npm run build --workspace frontend
         env:
           NEXT_BUILD_EXPORT: "1"
           NEXT_TELEMETRY_DISABLED: "1"
+          # The API is a standalone Flex Consumption Function App (deploy-api.yml),
+          # NOT SWA managed functions — those could not be deployed on this
+          # account/platform (opaque "Failed to deploy the Azure Functions" even
+          # with fully correct config). The static frontend calls the Function App
+          # directly via CORS; this URL is inlined into the bundle at build time.
+          NEXT_PUBLIC_API_BASE_URL: "https://kentekenmagic-api.azurewebsites.net"
 
       - name: Build And Deploy
         uses: Azure/static-web-apps-deploy@v1
@@ -52,10 +45,7 @@ jobs:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: "upload"
           app_location: "frontend/out"
-          api_location: "api"
+          # api_location intentionally empty: no SWA managed functions. The API is
+          # deployed separately to a Flex Consumption Function App (deploy-api.yml).
+          api_location: ""
           skip_app_build: true
-          # NOTE: do NOT set skip_api_build — Oryx's API build is what supplies
-          # the function "language info" to SWA. Skipping it causes
-          # "Function language info isn't provided" on deploy. With node:24
-          # (node:20 is EOL) and extensionBundle/core-tools removed, the Oryx
-          # API build succeeds.
