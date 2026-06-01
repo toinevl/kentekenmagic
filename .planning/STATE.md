@@ -3,14 +3,14 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 04-02-PLAN.md: GitHub Actions workflows created"
-last_updated: "2026-05-27"
+stopped_at: "04-03 complete: API on Flex Consumption; SWA static-only deploy GREEN; production smoke test PASS"
+last_updated: "2026-06-01"
 progress:
   total_phases: 2
   completed_phases: 1
   total_plans: 8
-  completed_plans: 6
-  percent: 62
+  completed_plans: 7
+  percent: 87
 ---
 
 # STATE.md — KentekenMagic
@@ -23,12 +23,11 @@ progress:
 
 ## Current Position
 
-Phase: 04 (azure-release) — EXECUTING
-Plan: 2 of 3
-Next: 04-03
+Phase: 04 (azure-release) — deploy GREEN, smoke test PASS
+Plan: 3 of 3 complete
+Next: phase verification / milestone completion
 
-- **Phase:** 3 of 4 — Data Depth ✓ complete
-- **Status:** Executing Phase 04
+- **Status:** Production deploy live — SWA frontend + standalone Flex Consumption API
 
 ## Progress
 
@@ -37,7 +36,7 @@ Phase 0 ████████████████████ 100% ✓
 Phase 1 ████████████████████ 100% ✓
 Phase 2 ████████████████████ 100% ✓
 Phase 3 ████████████████████ 100% ✓
-Phase 4 ░░░░░░░░░░░░░░░░░░░░   0%
+Phase 4 ███████████████████░  95%  (deploy GREEN + smoke PASS; phase verify pending)
 ```
 
 ## What Exists
@@ -48,7 +47,9 @@ Phase 4 ░░░░░░░░░░░░░░░░░░░░   0%
 
 **Root:** npm workspace `package.json`, `README.md`.
 
-**CI/CD (`.github/workflows/`):** validate.yml (PR lint/typecheck/build gate), deploy.yml (push-to-main Azure SWA deployment with API pre-compile).
+**CI/CD (`.github/workflows/`):** validate.yml (PR lint/typecheck/build gate), deploy.yml (push-to-main **static-only** Azure SWA deploy; injects `NEXT_PUBLIC_API_BASE_URL`), deploy-api.yml (Flex Consumption API deploy via azure/login + remote build; skips until `AZURE_CREDENTIALS` secret is set).
+
+**Production (live):** SWA frontend `purple-bush-04afb5403.7.azurestaticapps.net` (Free) + standalone Flex Consumption Function App `kentekenmagic-api` (`*.azurewebsites.net`, node 22) called directly via CORS. RG `kentekenmagic-rg`, West Europe. `ANTHROPIC_API_KEY` set; enrichment verified.
 
 ## Key Decisions (from PROJECT.md)
 
@@ -70,6 +71,7 @@ Phase 4 ░░░░░░░░░░░░░░░░░░░░   0%
 - Plate validator rejects all-letter or all-digit strings
 - Phase 3: APK timeline (replacing flat ApkCard), recall status, vehicle modifications — 3 new RDW dataset joins
 - Phase 4 Plan 02: validate.yml uses UseDevelopmentStorage=true mock so PR builds need no real Azure secrets; deploy.yml has no lint/typecheck (fast path per D-02); no permissions block (token auth not OIDC per D-04)
+- Phase 4 Plan 03: **SWA managed functions abandoned** — unprovisionable on this account (opaque `Failed to deploy the Azure Functions`, trivial app fails identically, all config correct). API moved to a **standalone Flex Consumption** Function App; SWA frontend stays Free + static-only and calls the API directly via CORS (`NEXT_PUBLIC_API_BASE_URL`). node:24 is not a valid SWA apiRuntime (cap node:22). enrich.ts now only caches AI-generated summaries (fallback no longer poisons the cache).
 
 ## Pending Todos
 
@@ -81,7 +83,7 @@ Phase 4 ░░░░░░░░░░░░░░░░░░░░   0%
 
 ## Session Continuity
 
-Last session: 2026-05-27
-Stopped at: Phase 04 deployment debugging in progress — azure-functions-core-tools removed, skip_app_build flow established; smoke test pending
+Last session: 2026-06-01
+Stopped at: Phase 04 deploy GREEN + production smoke test PASS. API on standalone Flex Consumption; SWA static-only; enrichment verified. Remaining: optional API CI secret (AZURE_CREDENTIALS), phase verification/milestone completion.
 Learnings extracted: 04-LEARNINGS.md (9 decisions, 7 lessons, 5 patterns, 5 surprises)
 Resume file: None
