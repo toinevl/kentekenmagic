@@ -1,9 +1,26 @@
 name: Deploy API to Azure Functions
 
-# Standalone Azure Functions deployment (Node 24, Functions v4, Linux Consumption).
-# The frontend deploys separately to Azure Static Web Apps (deploy.yml) and calls
-# this Function App's URL directly. SWA managed functions were abandoned because
-# the v4 model could not be deployed there (Node 20 EOL / managed-functions limits).
+# Standalone Azure Functions deployment: Functions v4 (Node 22, TypeScript) on a
+# Flex Consumption plan (app: kentekenmagic-api). The frontend deploys separately
+# to Azure Static Web Apps (deploy.yml) and calls this Function App's URL directly
+# via CORS. SWA managed functions were abandoned because they were unprovisionable
+# on this account (opaque "Failed to deploy the Azure Functions" with correct config).
+#
+# AUTH — one-time setup required before this workflow can deploy:
+#   Flex Consumption does NOT support publish profiles, so this uses azure/login.
+#   1. Create a service principal scoped to the resource group:
+#        az ad sp create-for-rbac --name kentekenmagic-api-deploy \
+#          --role contributor \
+#          --scopes /subscriptions/<SUB_ID>/resourceGroups/kentekenmagic-rg \
+#          --sdk-auth
+#   2. Copy the JSON output into a GitHub repo secret named AZURE_CREDENTIALS:
+#        gh secret set AZURE_CREDENTIALS < creds.json
+#   Until that secret exists, the deploy job below cleanly SKIPS (the run is green).
+#
+# Manual deploy (no CI) — what works today:
+#   cd api && zip -rq ../api.zip . -x 'node_modules/*' -x 'dist/*' -x 'local.settings.json'
+#   az functionapp deployment source config-zip -g kentekenmagic-rg \
+#     -n kentekenmagic-api --src ../api.zip --build-remote true
 
 on:
   push:
@@ -15,44 +32,45 @@ on:
   workflow_dispatch:
 
 env:
-  NODE_VERSION: '24'
   FUNCTIONAPP_NAME: kentekenmagic-api
+  RESOURCE_GROUP: kentekenmagic-rg
 
 jobs:
   deploy-api:
     runs-on: ubuntu-latest
+    env:
+      AZURE_CREDENTIALS: ${{ secrets.AZURE_CREDENTIALS }}
     steps:
+      - name: Check for deploy credentials
+        id: guard
+        run: |
+          if [ -z "$AZURE_CREDENTIALS" ]; then
+            echo "AZURE_CREDENTIALS secret not set — skipping API deploy (see workflow header for setup)."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Checkout
+        if: steps.guard.outputs.ready == 'true'
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Azure login
+        if: steps.guard.outputs.ready == 'true'
+        uses: azure/login@v2
         with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: 'npm'
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
 
-      - name: Install workspace deps & build API
+      - name: Package project root (remote build supplies node_modules + dist)
+        if: steps.guard.outputs.ready == 'true'
+        working-directory: api
+        run: zip -rq ../api.zip . -x 'node_modules/*' -x 'dist/*' -x 'local.settings.json' -x '*.log'
+
+      - name: Deploy to Flex Consumption (remote build)
+        if: steps.guard.outputs.ready == 'true'
         run: |
-          npm ci
-          npm run build --workspace api
-
-      - name: Stage self-contained function package
-        # skip Oryx/SCM remote build: ship prebuilt dist + production node_modules.
-        # In an npm-workspaces monorepo, api/node_modules is empty (deps hoist to
-        # the repo root), so install the API's prod deps standalone (--no-workspaces).
-        run: |
-          rm -rf api-deploy
-          mkdir -p api-deploy
-          cp -r api/dist api-deploy/dist
-          cp api/host.json api/package.json api-deploy/
-          cd api-deploy
-          npm install --omit=dev --no-package-lock --no-workspaces
-
-      - name: Deploy to Azure Functions
-        uses: Azure/functions-action@v1
-        with:
-          app-name: ${{ env.FUNCTIONAPP_NAME }}
-          package: api-deploy
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-          scm-do-build-during-deployment: false
-          enable-oryx-build: false
+          az functionapp deployment source config-zip \
+            --resource-group "$RESOURCE_GROUP" \
+            --name "$FUNCTIONAPP_NAME" \
+            --src api.zip \
+            --build-remote true
