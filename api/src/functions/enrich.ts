@@ -126,7 +126,12 @@ export async function enrichVehicle(request: HttpRequest): Promise<HttpResponseI
     enrichment = placeholderEnrichment(vehicleData);
   }
 
-  await setLlmCached(validation.plate, enrichment, LLM_TTL_SECONDS);
+  // Only cache real AI output. Caching the placeholder fallback (generated:false)
+  // would poison the cache for the full TTL whenever the key is transiently
+  // missing or Claude errors, permanently denying enrichment for that plate.
+  if (enrichment.generated) {
+    await setLlmCached(validation.plate, enrichment, LLM_TTL_SECONDS);
+  }
 
   return { status: 200, jsonBody: { ...enrichment, fromCache: false } };
 }
