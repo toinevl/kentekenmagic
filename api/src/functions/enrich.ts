@@ -1,9 +1,14 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { app, HttpRequest, HttpResponseInit } from "@azure/functions";
+import { generateRequestId } from "../lib/requestId.js";
 import { getLlmCached, getVehicleCached, setLlmCached } from "../cache/tableCache.js";
+import { RateLimiter } from "../lib/rateLimiter.js";
 import { validatePlate } from "../lib/plate.js";
 
 const LLM_TTL_SECONDS = 7 * 24 * 60 * 60;
+const SESSION_COOKIE = "vehicleSessionToken";
+const SESSION_TTL_MS = 1000 * 60 * 10;
+const enrichLimiter = new RateLimiter(60_000, 1);
 
 export interface EnrichmentPayload {
   summary: string;
@@ -11,7 +16,6 @@ export interface EnrichmentPayload {
   generated: boolean;
 }
 
-// Stable system prompt — eligible for prompt caching.
 const SYSTEM_PROMPT = `Je bent een objectieve assistent die officiële RDW-voertuiggegevens samenvat.
 Regels:
 - Vat uitsluitend de aangeleverde feiten samen. Verzin geen specificaties.
@@ -48,6 +52,29 @@ const ENRICHMENT_TOOL: Anthropic.Tool = {
     required: ["summary", "insights"]
   }
 };
+
+type SessionHeaders = {
+  headers: Record<string, string>;
+  cookie: { name: string; value: string; httpOnly: boolean; path: string; sameSite: "Lax" | "Strict" | "None"; maxAge: number };
+};
+
+function buildSessionHeaders(plate: string): SessionHeaders {
+  const requestId = generateRequestId();
+  return {
+    headers: {
+      "x-request-id": requestId,
+      "x-vehicle-token": requestId
+    },
+    cookie: {
+      name: SESSION_COOKIE,
+      value: requestId,
+      httpOnly: true,
+      path: "/",
+      sameSite: "Lax",
+      maxAge: Math.floor(SESSION_TTL_MS / 1000)
+    }
+  };
+}
 
 function buildUserPrompt(vehicleData: unknown): string {
   return `Voertuiggegevens (JSON):\n${JSON.stringify(vehicleData, null, 2)}\n\nGeef een gestructureerde samenvatting via het tool.`;
@@ -103,20 +130,50 @@ function placeholderEnrichment(vehicleData: unknown): EnrichmentPayload {
 }
 
 export async function enrichVehicle(request: HttpRequest): Promise<HttpResponseInit> {
+  const requestId = generateRequestId();
   const validation = validatePlate(request.params.plate);
 
   if (!validation.ok) {
-    return { status: 400, jsonBody: { error: validation.error } };
+    return {
+      status: 400,
+      headers: { "x-request-id": requestId },
+      jsonBody: { error: validation.error }
+    };
+  }
+
+  const token = request.headers.get("x-vehicle-token") ?? undefined;
+  const ratelimitKey = token ? `${validation.plate}:${token}` : validation.plate;
+
+  if (!enrichLimiter.allow(ratelimitKey)) {
+    return {
+      status: 429,
+      headers: {
+        "x-request-id": requestId,
+        "retry-after": String(enrichLimiter.retryAfterSeconds(ratelimitKey))
+      },
+      jsonBody: {
+        error: "Te veel verrijkingsaanvragen. Wacht even en probeer het opnieuw.",
+        retryAfterSeconds: enrichLimiter.retryAfterSeconds(ratelimitKey)
+      }
+    };
   }
 
   const cached = await getLlmCached(validation.plate);
   if (cached) {
-    return { status: 200, jsonBody: { ...(cached as Record<string, unknown>), fromCache: true } };
+    return {
+      status: 200,
+      headers: { "x-request-id": requestId },
+      jsonBody: { ...(cached as Record<string, unknown>), fromCache: true }
+    };
   }
 
   const vehicleData = await getVehicleCached(validation.plate);
   if (!vehicleData) {
-    return { status: 404, jsonBody: { error: "Voertuiggegevens staan nog niet in de cache." } };
+    return {
+      status: 404,
+      headers: { "x-request-id": requestId },
+      jsonBody: { error: "Voertuiggegevens staan nog niet in de cache." }
+    };
   }
 
   let enrichment: EnrichmentPayload;
@@ -126,14 +183,22 @@ export async function enrichVehicle(request: HttpRequest): Promise<HttpResponseI
     enrichment = placeholderEnrichment(vehicleData);
   }
 
-  // Only cache real AI output. Caching the placeholder fallback (generated:false)
-  // would poison the cache for the full TTL whenever the key is transiently
-  // missing or Claude errors, permanently denying enrichment for that plate.
   if (enrichment.generated) {
     await setLlmCached(validation.plate, enrichment, LLM_TTL_SECONDS);
   }
 
-  return { status: 200, jsonBody: { ...enrichment, fromCache: false } };
+  const responseBody = { ...enrichment, fromCache: false };
+  const sessionHeaders = buildSessionHeaders(validation.plate);
+
+  return {
+    status: 200,
+    headers: {
+      ...sessionHeaders.headers,
+      "x-request-id": requestId
+    },
+    cookies: [sessionHeaders.cookie],
+    jsonBody: responseBody
+  };
 }
 
 app.http("enrich", {
