@@ -2,6 +2,13 @@ import { z } from "zod";
 import { parseRdwDate } from "../lib/date.js";
 import { fetchRdwDataset } from "./rdw.js";
 import type { DataSource } from "./types.js";
+import pLimit from "p-limit";
+
+function uniqueStrings(values: (string | undefined)[]): string[] {
+  return Array.from(
+    new Set(values.filter((value): value is string => typeof value === "string"))
+  );
+}
 
 // Schema for sgfe-77wx inspection rows
 const rdwInspectionRowSchema = z
@@ -102,9 +109,9 @@ export const rdwApkHistory: DataSource<ApkHistory> = {
       rdwInspectionRowSchema.parse(row)
     );
 
-    // Fetch defects for all inspections in parallel
-    const detailed = await Promise.all(
-      inspectionRows.map(async (insp) => {
+    const result = await mapBounded(
+      inspectionRows,
+      async (insp) => {
         const meldDatum = insp.meld_datum_door_keuringsinstantie ?? "";
         const meldTijd = insp.meld_tijd_door_keuringsinstantie ?? "";
 
@@ -118,27 +125,20 @@ export const rdwApkHistory: DataSource<ApkHistory> = {
           ? rawDefects.map((row) => rdwDefectRowSchema.parse(row))
           : [];
 
-        // Fetch descriptions for all defects in parallel
-        const defects = await Promise.all(
-          defectRows.map(async (defect) => {
-            const gebrekId = defect.gebrek_identificatie ?? "";
-
-            const rawDesc = await fetchRdwDataset<unknown[]>("hx2c-gt7k", {
-              gebrek_identificatie: gebrekId
-            });
-
-            const descRow =
-              Array.isArray(rawDesc) && rawDesc.length > 0
-                ? rdwDefectDescSchema.parse(rawDesc[0])
-                : null;
-
-            return {
-              id: gebrekId,
-              description: descRow?.gebrek_omschrijving ?? "—",
-              count: parseInt(defect.aantal_gebreken_geconstateerd ?? "0", 10)
-            };
-          })
+        const uniqueDefectIds = uniqueStrings(
+          defectRows.map((row) => row.gebrek_identificatie)
         );
+
+        const descriptionByCode = await fetchDescriptions(uniqueDefectIds);
+
+        const defects = defectRows.map((defect) => {
+          const gebrekId = defect.gebrek_identificatie ?? "";
+          return {
+            id: gebrekId,
+            description: descriptionByCode.get(gebrekId) ?? "—",
+            count: parseInt(defect.aantal_gebreken_geconstateerd ?? "0", 10)
+          };
+        });
 
         const defectCount = defects.reduce((sum, d) => sum + d.count, 0);
 
@@ -157,11 +157,11 @@ export const rdwApkHistory: DataSource<ApkHistory> = {
           defectCount,
           defects
         } satisfies ApkInspection;
-      })
+      },
+      5
     );
 
-    // Sort descending by date (newest first)
-    const sorted = detailed.sort(
+    const sorted = result.sort(
       (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
     );
 
@@ -176,3 +176,43 @@ export const rdwApkHistory: DataSource<ApkHistory> = {
     };
   }
 };
+
+async function fetchDescriptions(
+  ids: string[]
+): Promise<Map<string, string>> {
+  const limit = pLimit(4);
+  const results = await Promise.all(
+    ids.map((id) =>
+      limit(async () => {
+        try {
+          const rawDesc = await fetchRdwDataset<unknown[]>("hx2c-gt7k", {
+            gebrek_identificatie: id
+          });
+
+          const row =
+            Array.isArray(rawDesc) && rawDesc.length > 0
+              ? rdwDefectDescSchema.parse(rawDesc[0])
+              : null;
+
+          return [id, row?.gebrek_omschrijving ?? "—"] as const;
+        } catch {
+          return [id, "—"] as const;
+        }
+      })
+    )
+  );
+
+  return new Map(results);
+}
+
+async function mapBounded<T, U>(
+  items: T[],
+  mapper: (item: T, index: number) => Promise<U>,
+  concurrency: number
+): Promise<U[]> {
+  const limit = pLimit(concurrency);
+  const mapped = await Promise.all(
+    items.map((item, index) => limit(() => mapper(item, index)))
+  );
+  return mapped;
+}
