@@ -48,11 +48,13 @@ export async function vehicleLookup(request: HttpRequest, context: InvocationCon
   const cached = await getVehicleCached(plate);
 
   if (cached) {
+    const displayPlate = formatPlate(plate);
     return {
       status: 200,
       jsonBody: {
         ...(cached as Record<string, unknown>),
-        fromCache: true
+        fromCache: true,
+        displayPlate
       }
     };
   }
