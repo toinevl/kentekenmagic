@@ -1,9 +1,22 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { app, HttpRequest, HttpResponseInit } from "@azure/functions";
-import { getLlmCached, getVehicleCached, setLlmCached } from "../cache/tableCache.js";
+import {
+  getLlmCached,
+  getVehicleCached,
+  setLlmCached
+} from "../cache/tableCache.js";
+import {
+  createVehicleSessionToken,
+  isValidVehicleSessionToken
+} from "../functions/session.js";
+import {
+  buildRateLimit429,
+  RateLimiter
+} from "../functions/rateLimiter.js";
 import { validatePlate } from "../lib/plate.js";
 
 const LLM_TTL_SECONDS = 7 * 24 * 60 * 60;
+const enrichLimiter = new RateLimiter();
 
 export interface EnrichmentPayload {
   summary: string;
@@ -109,14 +122,33 @@ export async function enrichVehicle(request: HttpRequest): Promise<HttpResponseI
     return { status: 400, jsonBody: { error: validation.error } };
   }
 
-  const cached = await getLlmCached(validation.plate);
-  if (cached) {
-    return { status: 200, jsonBody: { ...(cached as Record<string, unknown>), fromCache: true } };
+  const plate = validation.plate;
+  const tokenFromHeader = typeof request.headers.get("x-vehicle-token") === "string"
+    ? request.headers.get("x-vehicle-token")!
+    : null;
+
+  const validatedToken: string | null = isValidVehicleSessionToken(tokenFromHeader) ? tokenFromHeader : null;
+  const rateLimit = enrichLimiter.allow(plate, validatedToken);
+
+  if (!rateLimit.ok) {
+    return buildRateLimit429(rateLimit.waitMs);
   }
 
-  const vehicleData = await getVehicleCached(validation.plate);
+  const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+
+  const cached = await getLlmCached(plate);
+  if (cached) {
+    return { status: 200, jsonBody: { ...(cached as Record<string, unknown>), requestId, fromCache: true } };
+  }
+
+  const vehicleData = await getVehicleCached(plate);
   if (!vehicleData) {
-    return { status: 404, jsonBody: { error: "Voertuiggegevens staan nog niet in de cache." } };
+    return {
+      status: 404,
+      jsonBody: { error: "Voertuiggegevens staan nog niet in de cache.", requestId }
+    };
   }
 
   let enrichment: EnrichmentPayload;
@@ -126,14 +158,23 @@ export async function enrichVehicle(request: HttpRequest): Promise<HttpResponseI
     enrichment = placeholderEnrichment(vehicleData);
   }
 
-  // Only cache real AI output. Caching the placeholder fallback (generated:false)
-  // would poison the cache for the full TTL whenever the key is transiently
-  // missing or Claude errors, permanently denying enrichment for that plate.
-  if (enrichment.generated) {
-    await setLlmCached(validation.plate, enrichment, LLM_TTL_SECONDS);
+  const responseEnrichment: EnrichmentPayload =
+    enrichment.generated ? enrichment : enrichment;
+
+  if (responseEnrichment.generated) {
+    await setLlmCached(plate, responseEnrichment, LLM_TTL_SECONDS);
   }
 
-  return { status: 200, jsonBody: { ...enrichment, fromCache: false } };
+  const sessionToken = createVehicleSessionToken();
+  return {
+    status: 200,
+    headers: {
+      "cache-control": "no-store",
+      "x-request-id": requestId,
+      "set-cookie": `vehicleSessionToken=${sessionToken}; HttpOnly; Path=/; SameSite=Lax`
+    },
+    jsonBody: { ...responseEnrichment, requestId, fromCache: false, sessionToken }
+  };
 }
 
 app.http("enrich", {

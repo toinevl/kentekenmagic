@@ -4,6 +4,8 @@ import { formatPlate, validatePlate } from "../lib/plate.js";
 import { getVehicleCached, setVehicleCached } from "../cache/tableCache.js";
 import { sourceRegistry } from "../sources/registry.js";
 import type { DataSource, SourceResult } from "../sources/types.js";
+import { createVehicleSessionToken } from "./session.js";
+export { createVehicleSessionToken } from "./session.js";
 
 const DEFAULT_SOURCE_TIMEOUT_MS = 3000;
 const DEFAULT_CACHE_TTL_SECONDS = 60 * 60;
@@ -14,11 +16,25 @@ function timeout<T>(ms: number, sourceId: string): Promise<T> {
   });
 }
 
-async function runSource(source: DataSource, plate: string): Promise<SourceResult> {
+function requestId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+
+  return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+}
+
+async function runSource(
+  source: DataSource,
+  plate: string,
+  requestIdV: string
+): Promise<SourceResult> {
   const startedAt = performance.now();
 
   try {
-    const data = await Promise.race([source.fetch(plate), timeout(source.timeoutMs ?? DEFAULT_SOURCE_TIMEOUT_MS, source.id)]);
+    const data = await Promise.race([
+      source.fetch(plate),
+      timeout(source.timeoutMs ?? DEFAULT_SOURCE_TIMEOUT_MS, source.id)
+    ]);
+
     return {
       status: data === null ? "empty" : "ok",
       data,
@@ -45,6 +61,8 @@ export async function vehicleLookup(request: HttpRequest, context: InvocationCon
   }
 
   const plate = validation.plate;
+  const requestIdValue = requestId();
+
   const cached = await getVehicleCached(plate);
 
   if (cached) {
@@ -52,12 +70,16 @@ export async function vehicleLookup(request: HttpRequest, context: InvocationCon
       status: 200,
       jsonBody: {
         ...(cached as Record<string, unknown>),
+        requestId: requestIdValue,
         fromCache: true
       }
     };
   }
 
-  const sourceResults = await Promise.all(sourceRegistry.map((source) => runSource(source, plate)));
+  const sourceResults = await Promise.all(
+    sourceRegistry.map((source) => runSource(source, plate, requestIdValue))
+  );
+
   const cards: Record<string, unknown> = {};
   const errors: Record<string, string> = {};
   const manifest: string[] = [];
@@ -93,6 +115,8 @@ export async function vehicleLookup(request: HttpRequest, context: InvocationCon
     };
   }
 
+  const sessionToken = createVehicleSessionToken();
+
   const payload = {
     plate,
     displayPlate: formatPlate(plate),
@@ -101,7 +125,9 @@ export async function vehicleLookup(request: HttpRequest, context: InvocationCon
     manifest,
     cards,
     errors,
-    sources: Object.fromEntries(sourceRegistry.map((source, index) => [source.id, sourceResults[index]]))
+    sources: Object.fromEntries(sourceRegistry.map((source, index) => [source.id, sourceResults[index]])),
+    requestId: requestIdValue,
+    sessionToken
   };
 
   const ttl = Math.min(...sourceRegistry.map((source) => source.cacheTtlSeconds ?? DEFAULT_CACHE_TTL_SECONDS));

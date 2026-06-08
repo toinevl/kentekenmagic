@@ -25,11 +25,21 @@ function LookupShell() {
 
   const formattedInput = useMemo(() => formatPlate(rawPlate), [rawPlate]);
 
-  const query = useQuery({
+  const vehicleQuery = useQuery({
     queryKey: ["vehicle", submittedPlate],
     queryFn: () => lookupVehicle(submittedPlate ?? ""),
     enabled: Boolean(submittedPlate),
     retry: 1
+  });
+
+  const sessionMarker = vehicleQuery.data?.sessionMarker;
+
+  const enrichQuery = useQuery({
+    queryKey: ["enrich", submittedPlate, sessionMarker],
+    queryFn: () => enrichVehicle(submittedPlate ?? "", sessionMarker),
+    retry: 0,
+    staleTime: 7 * 24 * 60 * 60 * 1000,
+    enabled: Boolean(submittedPlate && vehicleQuery.data)
   });
 
   function onSubmit(event: FormEvent<HTMLFormElement>) {
@@ -61,7 +71,7 @@ function LookupShell() {
           </div>
         </header>
 
-        <div className="grid content-start gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(420px,1.05fr)] lg:items-start">
+        <div className="grid content-start gap-6 lg:grid-cols-[minmax(0,0.95fr)minmax(420px,1.05fr)] lg:items-start">
           <motion.section
             initial={reducedMotion ? false : { opacity: 0, y: 16 }}
             animate={reducedMotion ? undefined : { opacity: 1, y: 0 }}
@@ -89,7 +99,7 @@ function LookupShell() {
                   whileTap={reducedMotion ? undefined : { scale: 0.98 }}
                   className="inline-flex h-16 items-center justify-center gap-2 rounded-md bg-[var(--foreground)] px-6 font-semibold text-white transition hover:bg-black focus:outline-none focus:ring-4 focus:ring-teal-200"
                 >
-                  {query.isFetching ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
+                  {vehicleQuery.isFetching ? <Loader2 className="animate-spin" size={20} /> : <Search size={20} />}
                   Zoek
                 </motion.button>
               </div>
@@ -103,10 +113,10 @@ function LookupShell() {
           </motion.section>
 
           <section className="grid gap-4">
-            {!submittedPlate && !query.data ? <EmptyState /> : null}
-            {query.isFetching ? <LoadingCards plate={submittedPlate ?? normalizePlate(rawPlate)} /> : null}
-            {query.error ? <ErrorState message={(query.error as Error).message} /> : null}
-            {query.data ? <ResultPreview data={query.data} /> : null}
+            {!submittedPlate && !vehicleQuery.data ? <EmptyState /> : null}
+            {vehicleQuery.isFetching ? <LoadingCards plate={submittedPlate ?? normalizePlate(rawPlate)} /> : null}
+            {vehicleQuery.error ? <ErrorState message={(vehicleQuery.error as Error).message} /> : null}
+            {vehicleQuery.data ? <ResultPreview data={vehicleQuery.data} enrichQuery={enrichQuery} /> : null}
           </section>
         </div>
       </section>
@@ -183,20 +193,13 @@ function apkStatus(apkExpiry: string | null): "valid" | "soon" | "expired" | "un
 
 // ── ResultPreview ─────────────────────────────────────────────────────────────
 
-function ResultPreview({ data }: { data: VehicleLookupResponse }) {
+function ResultPreview({ data, enrichQuery }: { data: VehicleLookupResponse; enrichQuery: ReturnType<typeof useQuery<EnrichmentResponse>> }) {
   const plate = data.displayPlate ?? formatPlate(data.plate);
   const vehicle = data.cards.rdw_vehicle as RdwVehicle | undefined;
   const fuels = (data.cards.rdw_fuel ?? []) as RdwFuel[];
   const apkHistory = data.cards.rdw_apk_history as ApkHistory | undefined;
   const recallStatus = data.cards.rdw_recall_status as RecallStatus | undefined;
   const modifications = data.cards.rdw_modifications as Modifications | undefined;
-
-  const enrichQuery = useQuery({
-    queryKey: ["enrich", data.plate],
-    queryFn: () => enrichVehicle(data.plate),
-    retry: 0,
-    staleTime: 7 * 24 * 60 * 60 * 1000
-  });
 
   return (
     <>
