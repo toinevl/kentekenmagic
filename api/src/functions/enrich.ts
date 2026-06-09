@@ -1,19 +1,10 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { app, HttpRequest, HttpResponseInit } from "@azure/functions";
-import {
-  getLlmCached,
-  getVehicleCached,
-  setLlmCached
-} from "../cache/tableCache.js";
-import {
-  createVehicleSessionToken,
-  isValidVehicleSessionToken
-} from "../functions/session.js";
-import {
-  buildRateLimit429,
-  RateLimiter
-} from "../functions/rateLimiter.js";
+import { generateRequestId } from "../lib/requestId.js";
+import { getLlmCached, getVehicleCached, setLlmCached } from "../cache/tableCache.js";
+import { RateLimiter } from "../lib/rateLimiter.js";
 import { validatePlate } from "../lib/plate.js";
+import { isValidVehicleSessionToken } from "../lib/session.js";
 
 const LLM_TTL_SECONDS = 7 * 24 * 60 * 60;
 const enrichLimiter = new RateLimiter();
@@ -24,7 +15,6 @@ export interface EnrichmentPayload {
   generated: boolean;
 }
 
-// Stable system prompt — eligible for prompt caching.
 const SYSTEM_PROMPT = `Je bent een objectieve assistent die officiële RDW-voertuiggegevens samenvat.
 Regels:
 - Vat uitsluitend de aangeleverde feiten samen. Verzin geen specificaties.
@@ -116,38 +106,68 @@ function placeholderEnrichment(vehicleData: unknown): EnrichmentPayload {
 }
 
 export async function enrichVehicle(request: HttpRequest): Promise<HttpResponseInit> {
+  const requestId = generateRequestId();
   const validation = validatePlate(request.params.plate);
 
   if (!validation.ok) {
-    return { status: 400, jsonBody: { error: validation.error } };
+    return {
+      status: 400,
+      headers: { "x-request-id": requestId },
+      jsonBody: { error: validation.error }
+    };
   }
 
   const plate = validation.plate;
-  const tokenFromHeader = typeof request.headers.get("x-vehicle-token") === "string"
-    ? request.headers.get("x-vehicle-token")!
-    : null;
 
-  const validatedToken: string | null = isValidVehicleSessionToken(tokenFromHeader) ? tokenFromHeader : null;
-  const rateLimit = enrichLimiter.allow(plate, validatedToken);
+  // Require valid session token - reject unauthenticated requests
+  const cookieHeader = request.headers.get("cookie");
+  const tokenFromCookie = cookieHeader?.match(/vehicleSessionToken=([^;]+)/)?.[1];
+  const tokenFromHeader = request.headers.get("x-vehicle-token");
+  const sessionToken = tokenFromCookie ?? tokenFromHeader;
 
-  if (!rateLimit.ok) {
-    return buildRateLimit429(rateLimit.waitMs);
+  if (!sessionToken || !isValidVehicleSessionToken(sessionToken)) {
+    return {
+      status: 401,
+      headers: {
+        "x-request-id": requestId
+      },
+      jsonBody: {
+        error: "Geen geldige sessietoken. Voert eerst een voertuigopzoeking uit."
+      }
+    };
   }
 
-  const requestId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+  const ratelimitKey = `${plate}:${sessionToken}`;
+
+  if (!enrichLimiter.allow(ratelimitKey)) {
+    return {
+      status: 429,
+      headers: {
+        "x-request-id": requestId,
+        "retry-after": String(enrichLimiter.retryAfterSeconds(ratelimitKey))
+      },
+      jsonBody: {
+        error: "Te veel verrijkingsaanvragen. Wacht even en probeer het opnieuw.",
+        retryAfterSeconds: enrichLimiter.retryAfterSeconds(ratelimitKey)
+      }
+    };
+  }
 
   const cached = await getLlmCached(plate);
   if (cached) {
-    return { status: 200, jsonBody: { ...(cached as Record<string, unknown>), requestId, fromCache: true } };
+    return {
+      status: 200,
+      headers: { "x-request-id": requestId },
+      jsonBody: { ...(cached as Record<string, unknown>), fromCache: true }
+    };
   }
 
   const vehicleData = await getVehicleCached(plate);
   if (!vehicleData) {
     return {
       status: 404,
-      jsonBody: { error: "Voertuiggegevens staan nog niet in de cache.", requestId }
+      headers: { "x-request-id": requestId },
+      jsonBody: { error: "Voertuiggegevens staan nog niet in de cache." }
     };
   }
 
@@ -158,22 +178,14 @@ export async function enrichVehicle(request: HttpRequest): Promise<HttpResponseI
     enrichment = placeholderEnrichment(vehicleData);
   }
 
-  const responseEnrichment: EnrichmentPayload =
-    enrichment.generated ? enrichment : enrichment;
-
-  if (responseEnrichment.generated) {
-    await setLlmCached(plate, responseEnrichment, LLM_TTL_SECONDS);
+  if (enrichment.generated) {
+    await setLlmCached(plate, enrichment, LLM_TTL_SECONDS);
   }
 
-  const sessionToken = createVehicleSessionToken();
   return {
     status: 200,
-    headers: {
-      "cache-control": "no-store",
-      "x-request-id": requestId,
-      "set-cookie": `vehicleSessionToken=${sessionToken}; HttpOnly; Path=/; SameSite=Lax`
-    },
-    jsonBody: { ...responseEnrichment, requestId, fromCache: false, sessionToken }
+    headers: { "x-request-id": requestId },
+    jsonBody: { ...enrichment, fromCache: false }
   };
 }
 

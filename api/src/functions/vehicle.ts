@@ -18,7 +18,6 @@ function timeout<T>(ms: number, sourceId: string): Promise<T> {
 
 function requestId(): string {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
-
   return `${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
 }
 
@@ -50,28 +49,51 @@ async function runSource(
   }
 }
 
+function calculateFreshness(fetchedAt: string): string {
+  const fetched = new Date(fetchedAt);
+  if (isNaN(fetched.getTime())) return "onbekend";
+  const now = new Date();
+  const diffMs = now.getTime() - fetched.getTime();
+  const diffMins = Math.floor(diffMs / (1000 * 60));
+  if (diffMins < 1) return "zojuist";
+  if (diffMins < 60) return `${diffMins} min geleden`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours} uur geleden`;
+  const diffDays = Math.floor(diffHours / 24);
+  return `${diffDays} dagen geleden`;
+}
+
 export async function vehicleLookup(request: HttpRequest, context: InvocationContext): Promise<HttpResponseInit> {
+  const requestIdValue = requestId();
   const validation = validatePlate(request.params.plate);
 
   if (!validation.ok) {
     return {
       status: 400,
+      headers: { "x-request-id": requestIdValue },
       jsonBody: { error: validation.error }
     };
   }
 
   const plate = validation.plate;
-  const requestIdValue = requestId();
 
   const cached = await getVehicleCached(plate);
 
   if (cached) {
+    const cachedData = cached as Record<string, unknown>;
+    const displayPlate = formatPlate(plate);
+    const freshness = calculateFreshness(cachedData.fetchedAt as string);
     return {
       status: 200,
+      headers: {
+        "x-request-id": requestIdValue,
+        "cache-control": "public, max-age=3600"
+      },
       jsonBody: {
-        ...(cached as Record<string, unknown>),
-        requestId: requestIdValue,
-        fromCache: true
+        ...cachedData,
+        fromCache: true,
+        displayPlate,
+        freshness
       }
     };
   }
@@ -106,6 +128,7 @@ export async function vehicleLookup(request: HttpRequest, context: InvocationCon
   if (!cards.rdw_vehicle) {
     return {
       status: 404,
+      headers: { "x-request-id": requestIdValue },
       jsonBody: {
         error: "Geen voertuig gevonden voor dit kenteken.",
         plate,
@@ -116,6 +139,7 @@ export async function vehicleLookup(request: HttpRequest, context: InvocationCon
   }
 
   const sessionToken = createVehicleSessionToken();
+  const TTL_MS = 1000 * 60 * 10;
 
   const payload = {
     plate,
@@ -135,6 +159,18 @@ export async function vehicleLookup(request: HttpRequest, context: InvocationCon
 
   return {
     status: 200,
+    headers: {
+      "x-request-id": requestIdValue,
+      "cache-control": `public, max-age=${ttl}`
+    },
+    cookies: [{
+      name: "vehicleSessionToken",
+      value: sessionToken,
+      httpOnly: true,
+      path: "/",
+      sameSite: "Lax" as const,
+      maxAge: TTL_MS / 1000
+    }],
     jsonBody: payload
   };
 }
