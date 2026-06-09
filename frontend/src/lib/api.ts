@@ -28,6 +28,14 @@ export interface RdwVehicle {
   openstaande_terugroepactie_indicator?: string;
   tellerstandoordeel?: string;
   export_indicator?: string;
+  bruto_bpm?: string;
+  catalogusprijs?: string;
+  aantal_cilinders?: string;
+  cilinderinhoud?: string;
+  wielbasis?: string;
+  maximale_constructiesnelheid?: string;
+  vermogen_massarijklaar?: string;
+  laadvermogen?: string;
   dates: {
     firstAdmission: string | null;
     firstDutchRegistration: string | null;

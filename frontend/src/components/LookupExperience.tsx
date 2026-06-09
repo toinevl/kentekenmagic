@@ -179,6 +179,12 @@ function formatCm(value: string | undefined): string {
   return isNaN(n) ? "—" : `${(n / 100).toFixed(1)} m`;
 }
 
+function formatHp(value: string | undefined): string {
+  if (!value) return "—";
+  const n = parseFloat(value);
+  return isNaN(n) ? "—" : `${Math.round(n)} PK`;
+}
+
 function apkStatus(apkExpiry: string | null): "valid" | "soon" | "expired" | "unknown" {
   if (!apkExpiry) return "unknown";
   const expiry = new Date(apkExpiry);
@@ -210,6 +216,7 @@ function ResultPreview({ data, enrichQuery }: { data: VehicleLookupResponse; enr
       <FuelCard vehicle={vehicle} fuels={fuels} />
       <ModificationsCard modifications={modifications} />
       <RegistrationCard vehicle={vehicle} />
+      <TaxValueCard vehicle={vehicle} />
       <EnrichmentCard query={enrichQuery} />
     </>
   );
@@ -448,6 +455,39 @@ export function ModificationsCard({ modifications }: { modifications: Modificati
   );
 }
 
+// ── Card 6: Tax & Value ───────────────────────────────────────────────────────
+
+function TaxValueCard({ vehicle }: { vehicle: RdwVehicle | undefined }) {
+  if (!vehicle) return null;
+
+  const bpmValue = vehicle.bruto_bpm ? `€${parseFloat(vehicle.bruto_bpm).toLocaleString("nl-NL")}` : "—";
+  const catalogPrice = vehicle.catalogusprijs ? `€${parseFloat(vehicle.catalogusprijs).toLocaleString("nl-NL")}` : "—";
+
+  return (
+    <article className="rounded-lg border border-[var(--line)] bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center gap-2">
+        <div className="inline-grid size-8 place-items-center rounded-md bg-stone-100 text-[var(--foreground)]">
+          <Info size={18} />
+        </div>
+        <p className="text-sm font-semibold">Belasting & waarde</p>
+      </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-2">
+        <div>
+          <dt className="text-xs text-[var(--muted)]">Bruto BPM</dt>
+          <dd className="mt-0.5 text-sm font-semibold">{bpmValue}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-[var(--muted)]">Catalogusprijs</dt>
+          <dd className="mt-0.5 text-sm font-semibold">{catalogPrice}</dd>
+        </div>
+      </dl>
+      <p className="mt-3 text-xs text-[var(--muted)]">
+        BPM is de fiscale waarde voor motorrijtuigenbelasting. Geen marktwaarde garantie.
+      </p>
+    </article>
+  );
+}
+
 // ── Card 5: Technical specs ───────────────────────────────────────────────────
 
 function TechCard({ vehicle }: { vehicle: RdwVehicle | undefined }) {
@@ -462,6 +502,12 @@ function TechCard({ vehicle }: { vehicle: RdwVehicle | undefined }) {
           ? `${formatCm(vehicle?.lengte)} × ${formatCm(vehicle?.breedte)} × ${formatCm(vehicle?.hoogte_voertuig)}`
           : "—",
     },
+    { label: "Wielbasis", value: formatCm(vehicle?.wielbasis) },
+    { label: "Cilinders", value: vehicle?.aantal_cilinders ?? "—" },
+    { label: "Cilinderinhoud", value: vehicle?.cilinderinhoud ? `${vehicle.cilinderinhoud} cc` : "—" },
+    { label: "Vermogen", value: formatHp(vehicle?.vermogen_massarijklaar) },
+    { label: "Max. snelheid", value: vehicle?.maximale_constructiesnelheid ? `${vehicle.maximale_constructiesnelheid} km/h` : "—" },
+    { label: "Laadvermogen", value: vehicle?.laadvermogen ? `${parseInt(vehicle.laadvermogen).toLocaleString("nl-NL")} kg` : "—" },
   ];
 
   return (
@@ -484,7 +530,7 @@ function TechCard({ vehicle }: { vehicle: RdwVehicle | undefined }) {
   );
 }
 
-// ── Card 4: Fuel & environment ────────────────────────────────────────────────
+// ── Card 7: Fuel & environment ────────────────────────────────────────────────
 
 function FuelCard({ vehicle, fuels }: { vehicle: RdwVehicle | undefined; fuels: RdwFuel[] }) {
   return (
@@ -523,7 +569,7 @@ function FuelCard({ vehicle, fuels }: { vehicle: RdwVehicle | undefined; fuels: 
   );
 }
 
-// ── Card 5: Registration & history ────────────────────────────────────────────
+// ── Card 8: Registration & history ────────────────────────────────────────────
 
 function RegistrationCard({ vehicle }: { vehicle: RdwVehicle | undefined }) {
   const isExport = vehicle?.export_indicator === "Ja";
