@@ -32,11 +32,11 @@ function LookupShell() {
     retry: 1
   });
 
-  const sessionMarker = vehicleQuery.data?.sessionMarker;
+  const sessionToken = vehicleQuery.data?.sessionToken;
 
   const enrichQuery = useQuery({
-    queryKey: ["enrich", submittedPlate, sessionMarker],
-    queryFn: () => enrichVehicle(submittedPlate ?? "", sessionMarker),
+    queryKey: ["enrich", submittedPlate, sessionToken],
+    queryFn: () => enrichVehicle(submittedPlate ?? "", sessionToken),
     retry: 0,
     staleTime: 7 * 24 * 60 * 60 * 1000,
     enabled: Boolean(submittedPlate && vehicleQuery.data)
@@ -203,7 +203,7 @@ function ResultPreview({ data, enrichQuery }: { data: VehicleLookupResponse; enr
 
   return (
     <>
-      <IdentityCard plate={plate} fromCache={data.fromCache} vehicle={vehicle} />
+      <IdentityCard plate={plate} fromCache={data.fromCache} freshness={data.freshness} vehicle={vehicle} />
       <ApkTimelineCard apkHistory={apkHistory} />
       <RecallCard recallStatus={recallStatus} />
       <TechCard vehicle={vehicle} />
@@ -220,10 +220,12 @@ function ResultPreview({ data, enrichQuery }: { data: VehicleLookupResponse; enr
 function IdentityCard({
   plate,
   fromCache,
+  freshness,
   vehicle,
 }: {
   plate: string;
   fromCache?: boolean;
+  freshness?: string;
   vehicle: RdwVehicle | undefined;
 }) {
   const makeModel = [vehicle?.merk, vehicle?.handelsbenaming].filter(Boolean).join(" ");
@@ -264,6 +266,9 @@ function IdentityCard({
             </span>
           ))}
         </div>
+      ) : null}
+      {freshness ? (
+        <p className="mt-2 text-xs text-[var(--muted)]">Data opgehaald {freshness}</p>
       ) : null}
     </article>
   );

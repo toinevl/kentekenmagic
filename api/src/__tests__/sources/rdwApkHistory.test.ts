@@ -71,8 +71,8 @@ describe("rdwApkHistory", () => {
       expect(rdwApkHistory.timeoutMs).toBe(3500);
     });
 
-    it("has cacheTtlSeconds 86400", () => {
-      expect(rdwApkHistory.cacheTtlSeconds).toBe(86400);
+    it("has cacheTtlSeconds 15 minutes (900 seconds)", () => {
+      expect(rdwApkHistory.cacheTtlSeconds).toBe(900);
     });
   });
 

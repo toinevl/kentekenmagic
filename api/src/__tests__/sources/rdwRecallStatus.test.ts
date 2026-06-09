@@ -28,8 +28,8 @@ describe("rdwRecallStatus", () => {
     expect(rdwRecallStatus.timeoutMs).toBe(3500);
   });
 
-  it("has cacheTtlSeconds of 86400", () => {
-    expect(rdwRecallStatus.cacheTtlSeconds).toBe(86400);
+  it("has cacheTtlSeconds of 15 minutes (900 seconds)", () => {
+    expect(rdwRecallStatus.cacheTtlSeconds).toBe(900);
   });
 
   describe("fetch()", () => {

@@ -28,8 +28,8 @@ describe("rdwModifications", () => {
     expect(rdwModifications.timeoutMs).toBe(3500);
   });
 
-  it("has cacheTtlSeconds of 86400", () => {
-    expect(rdwModifications.cacheTtlSeconds).toBe(86400);
+  it("has cacheTtlSeconds of 15 minutes (900 seconds)", () => {
+    expect(rdwModifications.cacheTtlSeconds).toBe(900);
   });
 
   describe("fetch()", () => {

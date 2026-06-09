@@ -18,7 +18,7 @@ export const rdwFuel: DataSource<RdwFuel[]> = {
   id: "rdw_fuel",
   name: "RDW brandstof en emissies",
   timeoutMs: 3000,
-  cacheTtlSeconds: 24 * 60 * 60,
+  cacheTtlSeconds: 2 * 60 * 60,
   async fetch(plate) {
     const payload = await fetchRdwDataset<unknown[]>("8ys7-d773", {
       kenteken: plate

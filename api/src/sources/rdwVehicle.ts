@@ -44,7 +44,7 @@ export const rdwVehicle: DataSource<RdwVehicle> = {
   id: "rdw_vehicle",
   name: "RDW basisregistratie",
   timeoutMs: 3500,
-  cacheTtlSeconds: 24 * 60 * 60,
+  cacheTtlSeconds: 2 * 60 * 60,
   async fetch(plate) {
     const payload = await fetchRdwDataset<unknown[]>("m9d7-ebf2", {
       kenteken: plate,

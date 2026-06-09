@@ -98,8 +98,9 @@ export interface VehicleLookupResponse {
   displayPlate?: string;
   fetchedAt: string;
   fromCache?: boolean;
+  freshness?: string;
   manifest: string[];
-  sessionMarker?: string;
+  sessionToken?: string;
   cards: {
     rdw_vehicle?: RdwVehicle;
     rdw_fuel?: RdwFuel[];
@@ -123,12 +124,12 @@ export interface EnrichmentResponse {
   fromCache?: boolean;
 }
 
-export async function enrichVehicle(plate: string, sessionMarker?: string): Promise<EnrichmentResponse> {
+export async function enrichVehicle(plate: string, sessionToken?: string): Promise<EnrichmentResponse> {
   const headers: Record<string, string> = {
     accept: "application/json",
   };
-  if (sessionMarker) {
-    headers["x-session-marker"] = sessionMarker;
+  if (sessionToken) {
+    headers["x-vehicle-token"] = sessionToken;
   }
 
   const response = await fetch(`${API_BASE}/api/enrich/${encodeURIComponent(plate)}`, {

@@ -4,6 +4,13 @@ import { fetchRdwDataset } from "./rdw.js";
 import type { DataSource } from "./types.js";
 import pLimit from "p-limit";
 
+// In-flight deduplication map for concurrent requests to same plate
+const inFlightFetches = new Map<string, Promise<ApkHistory | null>>();
+
+// Request counter for defensive logging
+let requestCountTotal = 0;
+let requestCountByPlate = new Map<string, number>();
+
 function uniqueStrings(values: (string | undefined)[]): string[] {
   return Array.from(
     new Set(values.filter((value): value is string => typeof value === "string"))
@@ -90,93 +97,6 @@ function apkStatus(expiryIso: string | null): "valid" | "soon" | "expired" | "un
   return "valid";
 }
 
-export const rdwApkHistory: DataSource<ApkHistory> = {
-  id: "rdw_apk_history",
-  name: "RDW APK-keuringshistorie",
-  timeoutMs: 3500,
-  cacheTtlSeconds: 24 * 60 * 60,
-
-  async fetch(plate: string): Promise<ApkHistory | null> {
-    const rawInspections = await fetchRdwDataset<unknown[]>("sgfe-77wx", {
-      kenteken: plate
-    });
-
-    if (!Array.isArray(rawInspections) || rawInspections.length === 0) {
-      return null;
-    }
-
-    const inspectionRows = rawInspections.map((row) =>
-      rdwInspectionRowSchema.parse(row)
-    );
-
-    const result = await mapBounded(
-      inspectionRows,
-      async (insp) => {
-        const meldDatum = insp.meld_datum_door_keuringsinstantie ?? "";
-        const meldTijd = insp.meld_tijd_door_keuringsinstantie ?? "";
-
-        const rawDefects = await fetchRdwDataset<unknown[]>("a34c-vvps", {
-          kenteken: plate,
-          meld_datum_door_keuringsinstantie: meldDatum,
-          meld_tijd_door_keuringsinstantie: meldTijd
-        });
-
-        const defectRows = Array.isArray(rawDefects)
-          ? rawDefects.map((row) => rdwDefectRowSchema.parse(row))
-          : [];
-
-        const uniqueDefectIds = uniqueStrings(
-          defectRows.map((row) => row.gebrek_identificatie)
-        );
-
-        const descriptionByCode = await fetchDescriptions(uniqueDefectIds);
-
-        const defects = defectRows.map((defect) => {
-          const gebrekId = defect.gebrek_identificatie ?? "";
-          return {
-            id: gebrekId,
-            description: descriptionByCode.get(gebrekId) ?? "—",
-            count: parseInt(defect.aantal_gebreken_geconstateerd ?? "0", 10)
-          };
-        });
-
-        const defectCount = defects.reduce((sum, d) => sum + d.count, 0);
-
-        const date =
-          (parseRdwDate(insp.meld_datum_door_keuringsinstantie) ?? "") +
-          "T" +
-          formatTime(insp.meld_tijd_door_keuringsinstantie);
-
-        const expiryDate = parseRdwDate(insp.vervaldatum_keuring) ?? "";
-
-        return {
-          date,
-          expiryDate,
-          type: insp.soort_melding_ki_omschrijving ?? "",
-          facility: insp.soort_erkenning_omschrijving ?? "",
-          defectCount,
-          defects
-        } satisfies ApkInspection;
-      },
-      5
-    );
-
-    const sorted = result.sort(
-      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
-    );
-
-    const currentExpiry = sorted[0]?.expiryDate || null;
-
-    return {
-      plate,
-      currentExpiry,
-      currentStatus: apkStatus(currentExpiry),
-      inspections: sorted,
-      totalCount: sorted.length
-    };
-  }
-};
-
 async function fetchDescriptions(
   ids: string[]
 ): Promise<Map<string, string>> {
@@ -216,3 +136,115 @@ async function mapBounded<T, U>(
   );
   return mapped;
 }
+
+export const rdwApkHistory: DataSource<ApkHistory> = {
+  id: "rdw_apk_history",
+  name: "RDW APK-keuringshistorie",
+  timeoutMs: 3500,
+  cacheTtlSeconds: 15 * 60,
+
+  async fetch(plate: string): Promise<ApkHistory | null> {
+    // In-flight deduplication: return existing promise if request already in progress
+    const existing = inFlightFetches.get(plate);
+    if (existing) {
+      console.log(`[apk] Re-using in-flight fetch for ${plate}`);
+      return existing;
+    }
+
+    // Track request count
+    requestCountTotal++;
+    requestCountByPlate.set(plate, (requestCountByPlate.get(plate) ?? 0) + 1);
+
+    const fetchPromise = (async (): Promise<ApkHistory | null> => {
+      const rawInspections = await fetchRdwDataset<unknown[]>("sgfe-77wx", {
+        kenteken: plate
+      });
+
+      if (!Array.isArray(rawInspections) || rawInspections.length === 0) {
+        return null;
+      }
+
+      const inspectionRows = rawInspections.map((row) =>
+        rdwInspectionRowSchema.parse(row)
+      );
+
+      console.log(`[apk] Fetching ${inspectionRows.length} inspections for ${plate}`);
+
+      const result = await mapBounded(
+        inspectionRows,
+        async (insp) => {
+          const meldDatum = insp.meld_datum_door_keuringsinstantie ?? "";
+          const meldTijd = insp.meld_tijd_door_keuringsinstantie ?? "";
+
+          const rawDefects = await fetchRdwDataset<unknown[]>("a34c-vvps", {
+            kenteken: plate,
+            meld_datum_door_keuringsinstantie: meldDatum,
+            meld_tijd_door_keuringsinstantie: meldTijd
+          });
+
+          const defectRows = Array.isArray(rawDefects)
+            ? rawDefects.map((row) => rdwDefectRowSchema.parse(row))
+            : [];
+
+          const uniqueDefectIds = uniqueStrings(
+            defectRows.map((row) => row.gebrek_identificatie)
+          );
+
+          const descriptionByCode = await fetchDescriptions(uniqueDefectIds);
+
+          const defects = defectRows.map((defect) => {
+            const gebrekId = defect.gebrek_identificatie ?? "";
+            return {
+              id: gebrekId,
+              description: descriptionByCode.get(gebrekId) ?? "—",
+              count: parseInt(defect.aantal_gebreken_geconstateerd ?? "0", 10)
+            };
+          });
+
+          const defectCount = defects.reduce((sum, d) => sum + d.count, 0);
+
+          const date =
+            (parseRdwDate(insp.meld_datum_door_keuringsinstantie) ?? "") +
+            "T" +
+            formatTime(insp.meld_tijd_door_keuringsinstantie);
+
+          const expiryDate = parseRdwDate(insp.vervaldatum_keuring) ?? "";
+
+          return {
+            date,
+            expiryDate,
+            type: insp.soort_melding_ki_omschrijving ?? "",
+            facility: insp.soort_erkenning_omschrijving ?? "",
+            defectCount,
+            defects
+          } satisfies ApkInspection;
+        },
+        5
+      );
+
+      const sorted = result.sort(
+        (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()
+      );
+
+      const currentExpiry = sorted[0]?.expiryDate || null;
+
+      console.log(`[apk] Completed fetch for ${plate}: ${sorted.length} inspections, ${requestCountTotal} total requests`);
+
+      return {
+        plate,
+        currentExpiry,
+        currentStatus: apkStatus(currentExpiry),
+        inspections: sorted,
+        totalCount: sorted.length
+      };
+    })();
+
+    inFlightFetches.set(plate, fetchPromise);
+    try {
+      const result = await fetchPromise;
+      return result;
+    } finally {
+      inFlightFetches.delete(plate);
+    }
+  }
+};

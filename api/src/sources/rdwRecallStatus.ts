@@ -45,8 +45,7 @@ export const rdwRecallStatus: DataSource<RecallStatus> = {
   id: "rdw_recall_status",
   name: "RDW terugroepacties",
   timeoutMs: 3500,
-  cacheTtlSeconds: 86400,
-
+  cacheTtlSeconds: 15 * 60,
   async fetch(plate: string): Promise<RecallStatus> {
     const payload = await fetchRdwDataset<unknown[]>("t49b-isb7", {
       kenteken: plate

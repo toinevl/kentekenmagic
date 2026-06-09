@@ -33,8 +33,7 @@ export const rdwModifications: DataSource<Modifications> = {
   id: "rdw_modifications",
   name: "RDW wijzigingen",
   timeoutMs: 3500,
-  cacheTtlSeconds: 86400,
-
+  cacheTtlSeconds: 15 * 60,
   async fetch(plate: string): Promise<Modifications> {
     const payload = await fetchRdwDataset<unknown[]>("sghb-dzxx", {
       kenteken: plate
